@@ -1,0 +1,45 @@
+{
+  "title": "Adventures of Pebbles",
+  "tagline": "Understandings of Betaether",
+  "description": "The poetry, stories and reflections of Pebbles Martinez — a teenage writer and future architect who writes because she loves to write.",
+  "url": "https://betaether.wordpress.com",
+  "author": {
+    "name": "Pebbles Martinez",
+    "handle": "betaether",
+    "email": "betaether@gmail.com",
+    "bio": "Hi, my name is Pebbles Martinez. I am a girl who wants to contribute my best to world. My dream is to become an architect and an author of books. I write articles about my adventures as a teenager. I write because I want to share my ideas to people, and simply because I love writing. In my blog, you will be able to read random ideas that make me happy. Join my articles and let us be jolly!",
+    "since": 2017
+  },
+  "subscribers": "104",
+  "categories": {
+    "Poetry": {
+      "blurb": "Verses about the sea, the sun, the family and the self.",
+      "symbol": "❦"
+    },
+    "Reflections": {
+      "blurb": "Thinking out loud about focus, fear, mistakes and growing up.",
+      "symbol": "✦"
+    },
+    "Stories": {
+      "blurb": "Little narratives with big feelings inside them.",
+      "symbol": "❧"
+    },
+    "Letters": {
+      "blurb": "Notes written in the voice of someone else — the Earth, a dog, a feeling.",
+      "symbol": "✉"
+    },
+    "Guides": {
+      "blurb": "Friendly how-tos: drawing, deciding, procrastinating less.",
+      "symbol": "✎"
+    }
+  },
+  "nav": [
+    { "label": "Home", "href": "/" },
+    { "label": "Poetry", "href": "/category/poetry/" },
+    { "label": "Stories", "href": "/category/stories/" },
+    { "label": "Guides", "href": "/category/guides/" },
+    { "label": "About", "href": "/about/" },
+    { "label": "Contact", "href": "/contact/" }
+  ],
+  "contactImage": "/assets/uploads/contact.jpg"
+}

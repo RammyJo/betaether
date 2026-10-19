@@ -1,0 +1,19 @@
+{
+  "name": "betaether",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Adventures of Pebbles — the poetry, stories and reflections of Pebbles Martinez. A static journal built for Cloudflare.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && node --run serve",
+    "serve": "node server.mjs",
+    "deploy": "node build.mjs && wrangler deploy",
+    "preview": "node build.mjs && wrangler dev"
+  },
+  "keywords": ["blog", "poetry", "journal", "static-site", "cloudflare"],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
