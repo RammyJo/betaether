@@ -9,7 +9,8 @@
     "dev": "node build.mjs && node --run serve",
     "serve": "node server.mjs",
     "deploy": "node build.mjs && wrangler deploy",
-    "preview": "node build.mjs && wrangler dev"
+    "preview": "node build.mjs && wrangler dev",
+    "check": "node build.mjs && node scripts/audit.mjs && node scripts/check.mjs && node scripts/check-vt.mjs && node scripts/verify.mjs"
   },
   "keywords": ["blog", "poetry", "journal", "static-site", "cloudflare"],
   "license": "UNLICENSED",

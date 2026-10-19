@@ -41,5 +41,18 @@
     { "label": "About", "href": "/about/" },
     { "label": "Contact", "href": "/contact/" }
   ],
-  "contactImage": "/assets/uploads/contact.jpg"
+  "contactImage": "/assets/uploads/contact.jpg",
+  "featuredPoem": "my-vase",
+  "ticker": [
+    { "text": "My soft feet brush the coarse white sand", "source": "Beach Poetry" },
+    { "text": "Just smile with me, yes, thats it!", "source": "Cheer Up" },
+    { "text": "Where I see that the kind moon turns blue", "source": "Poem to Novels" },
+    { "text": "Like a garden full of lovers", "source": "My vase" },
+    { "text": "Sweet dreams, and good night", "source": "Good night" },
+    { "text": "Always regal, shining with beauty", "source": "Beach Poetry" },
+    { "text": "Higher than the sky", "source": "Mountains" },
+    { "text": "Nurture it with love and care", "source": "Fragile" },
+    { "text": "I love you very much", "source": "I Love You" },
+    { "text": "And feel that fairy tales come true", "source": "Poem to Novels" }
+  ]
 }

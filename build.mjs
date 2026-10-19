@@ -39,7 +39,38 @@ const excerpt = (html, len = 190) => {
 
 const slugUrl = (p) => `/post/${p.slug}/`;
 
-const plainBody = (p) => p.body.replace(/<div class="spoiler">/g, "").replace(/<\/div>/g, "");
+/* --------------------------------------------------- content transforms */
+/**
+ * Normalise post HTML:
+ *  - demote in-body <h1> to <h2> so every page has exactly one <h1>
+ *  - turn the puzzle's `spoiler` block into a real, accessible <details> reveal
+ *  - add a drop cap to the opening paragraph of prose pieces
+ */
+function transformBody(p) {
+  let html = p.body;
+
+  // one <h1> per page
+  html = html.replace(/<h1(\s[^>]*)?>/gi, (_m, attrs = "") => `<h2${attrs}>`)
+             .replace(/<\/h1>/gi, "</h2>");
+
+  // real, keyboard-accessible reveal (works without JavaScript)
+  html = html.replace(
+    /<div class="spoiler">([\s\S]*?)<\/div>/gi,
+    (_m, inner) =>
+      `<details class="answer"><summary class="answer__toggle">` +
+      `<span class="answer__label">Reveal the answer</span>` +
+      `<span class="answer__chev" aria-hidden="true"></span></summary>` +
+      `<div class="answer__body">${inner}</div></details>`
+  );
+
+  // drop cap on prose openings
+  if (!p.verse) {
+    html = html.replace(/<p>/, '<p class="dropcap">');
+  }
+  return html;
+}
+
+/* --------------------------------------------------- versions of a headline */
 
 /* ------------------------------------------------------------------ layout */
 const ICONS = {
@@ -64,7 +95,7 @@ function header(active = "/") {
   <header class="site-header">
     <div class="wrap header-inner">
       <a class="brand" href="/" aria-label="${esc(site.title)} — home">
-        <img class="brand__mark" src="/assets/uploads/site-icon.jpg" alt="" width="40" height="40" loading="eager">
+        <img class="brand__mark" src="/assets/uploads/site-icon.jpg" alt="" width="40" height="40" loading="eager" style="view-transition-name:brand-mark">
         <span class="brand__text">
           <span class="brand__name">${esc(site.title)}</span>
           <span class="brand__tag">${esc(site.tagline)}</span>
@@ -117,10 +148,11 @@ function footer() {
 }
 
 function shell({ title, description, active = "/", body, canonical, ogType = "website", extraHead = "" }) {
-  const fullTitle = title ? `${esc(title)} — ${esc(site.title)}` : `${esc(site.title)} — ${esc(site.tagline)}`;
+  const withSuffix = title ? `${title} — ${site.title}` : `${site.title} — ${site.tagline}`;
+  const fullTitle = esc(withSuffix.length > 62 && title ? title : withSuffix);
   const url = canonical ? `${site.url}${canonical}` : site.url + "/";
   return `<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" class="no-js" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -144,9 +176,18 @@ function shell({ title, description, active = "/", body, canonical, ogType = "we
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Inter:wght@400..700&display=swap">
 <link rel="stylesheet" href="/assets/styles.css">
-<script>(function(){try{var t=localStorage.getItem("pebbles-theme");if(t)document.documentElement.setAttribute("data-theme",t);else if(window.matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
+<script>(function(){var d=document.documentElement;d.classList.remove("no-js");d.classList.add("js");
+/* Content starts hidden so it can animate in. If the motion engine never
+   arrives or dies, drop the class again so the journal simply shows itself. */
+window.__pebblesReady=false;
+var fallback=function(){if(!window.__pebblesReady)d.classList.remove("js");};
+window.addEventListener("error",fallback);
+window.setTimeout(fallback,3000);
+try{var t=localStorage.getItem("pebbles-theme");if(t)d.setAttribute("data-theme",t);else if(window.matchMedia("(prefers-color-scheme: dark)").matches)d.setAttribute("data-theme","dark");}catch(e){}})();</script>
 ${extraHead}</head>
-<body>
+<body class="page-${esc((canonical || "/").replace(/^\/|\/$/g, "") || "home")}">
+<div class="cursor" aria-hidden="true"><span class="cursor__dot"></span><span class="cursor__ring"></span></div>
+<canvas class="petals" aria-hidden="true"></canvas>
 ${header(active)}
 <main id="main">
 ${body}
@@ -166,21 +207,22 @@ const meta = (p, { showCat = true } = {}) => `
     <span class="reading">${readingTime(p.body)} min read</span>
   </div>`;
 
-function cardMedia(p) {
+function cardMedia(p, vtName) {
+  const vt = vtName ? ` style="view-transition-name:${vtName}"` : "";
   if (p.image) {
-    return `<div class="card__media"><img src="${p.image}" alt="" loading="lazy" decoding="async" width="600" height="375"></div>`;
+    return `<div class="card__media"${vt}><img src="${p.image}" alt="" loading="lazy" decoding="async" width="600" height="375"></div>`;
   }
   const sym = site.categories[p.category]?.symbol || "❦";
-  return `<div class="card__media card__media--verse" aria-hidden="true"><span>${sym}</span></div>`;
+  return `<div class="card__media card__media--verse"${vt} aria-hidden="true"><span class="card__glyph">${sym}</span></div>`;
 }
 
 function card(p, delay = 0) {
   return `
-  <article class="card" data-category="${esc(p.category)}" data-search="${esc(`${p.title} ${p.category} ${stripHtml(p.body)}`)}" data-reveal data-reveal-delay="${delay}">
-    <a class="card__link" href="${slugUrl(p)}" tabindex="-1" aria-hidden="true">${cardMedia(p)}</a>
+  <article class="card" data-category="${esc(p.category)}" data-search="${esc(`${p.title} ${p.category} ${stripHtml(p.body)}`)}" data-reveal="up" data-reveal-delay="${delay}" data-tilt>
+    <a class="card__link" href="${slugUrl(p)}" tabindex="-1" aria-hidden="true">${cardMedia(p, `vt-img-${p.slug}`)}</a>
     <div class="card__body">
       <a class="tag" href="/category/${CAT_SLUG(p.category)}/">${esc(p.category)}</a>
-      <h3><a href="${slugUrl(p)}">${esc(p.title)}</a></h3>
+      <h3 style="view-transition-name:vt-title-${p.slug}"><a href="${slugUrl(p)}">${esc(p.title)}</a></h3>
       <p class="excerpt">${esc(excerpt(p.body))}</p>
       <div class="meta" style="margin-top:1rem">
         <time datetime="${p.date}">${fmtDate(p.date)}</time>
@@ -188,6 +230,7 @@ function card(p, delay = 0) {
         <span class="reading">${readingTime(p.body)} min</span>
       </div>
     </div>
+    <span class="card__spot" aria-hidden="true"></span>
   </article>`;
 }
 
@@ -206,52 +249,77 @@ function homePage() {
         .filter((p) => p.date.startsWith(y))
         .map((p) => `<a class="year__item" href="${slugUrl(p)}"><span class="t">${esc(p.title)}</span><span class="d">${fmtDate(p.date, false)}</span></a>`)
         .join("");
-      return `<div class="year" data-reveal><div class="year__num">${y}</div><div class="year__list">${items}</div></div>`;
+      return `<div class="year" data-reveal="up"><div class="year__num">${y}</div><div class="year__list">${items}</div></div>`;
     })
     .join("");
 
   const featuredMedia = featured.image
-    ? `<div class="featured__media"><img src="${featured.image}" alt="" loading="eager" width="800" height="600"></div>`
-    : `<div class="featured__media featured__media--empty"></div>`;
+    ? `<div class="featured__media" style="view-transition-name:vt-feat-img-${featured.slug}"><img src="${featured.image}" alt="" loading="eager" decoding="async" width="800" height="600"></div>`
+    : `<div class="featured__media featured__media--empty"><span class="orbit" aria-hidden="true"></span><span class="orbit orbit--2" aria-hidden="true"></span></div>`;
+
+  /* the poem you read slowly, line by line, as you scroll */
+  const poem = posts.find((p) => p.slug === site.featuredPoem) || posts.find((p) => p.verse);
+  const poemLines = poem
+    ? `<div class="scrollpoem" data-scrollpoem>
+        <div class="scrollpoem__rail" aria-hidden="true"><span class="scrollpoem__bead"></span></div>
+        <div class="scrollpoem__verses">
+          ${poem.body
+            .split(/(?=<\/p>)/)
+            .filter((s) => s.replace(/<[^>]+>/g, "").trim())
+            .map((block, i) => `<div class="scrollpoem__block" data-line-index="${i}">${block}</div>`)
+            .join("")}
+        </div>
+      </div>`
+    : "";
+
+  const ticker = (site.ticker || [])
+    .map((t) => `<span class="ticker__item"><span class="ticker__text">${esc(t.text)}</span><span class="ticker__src">${esc(t.source)}</span><span class="ticker__sep" aria-hidden="true">❦</span></span>`)
+    .join("");
 
   const body = `
   <section class="hero">
+    <div class="hero__aurora" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="wrap hero__grid">
-      <div data-reveal>
-        <p class="eyebrow eyebrow--accent">A journal of ${posts.length} pieces · since ${site.author.since}</p>
-        <h1 class="hero__title">Adventures<br>of <em>Pebbles</em></h1>
-        <p class="hero__tagline">${esc(site.tagline)}.</p>
-        <p class="hero__desc">Poetry, stories and small reflections from a girl who dreams of becoming an architect and an author — and who writes simply because she loves to write.</p>
-        <div class="hero__actions">
-          <a class="btn btn--primary" href="#latest">Start reading <span aria-hidden="true">→</span></a>
-          <a class="btn btn--ghost" href="/about/">About Pebbles</a>
+      <div class="hero__copy">
+        <p class="eyebrow eyebrow--accent" data-reveal="fade">A journal of ${posts.length} pieces · since ${site.author.since}</p>
+        <h1 class="hero__title" style="view-transition-name:hero-title" data-hero-title>
+          <span class="line" data-line="0"><span class="line__inner">Adventures</span></span>
+          <span class="line" data-line="1"><span class="line__inner">of <em>Pebbles</em></span></span>
+        </h1>
+        <p class="hero__tagline" data-reveal="up" data-reveal-delay="120">${esc(site.tagline)}.</p>
+        <p class="hero__desc" data-reveal="up" data-reveal-delay="200">Poetry, stories and small reflections from a girl who dreams of becoming an architect and an author — and who writes simply because she loves to write.</p>
+        <div class="hero__actions" data-reveal="up" data-reveal-delay="280">
+          <a class="btn btn--primary" href="#latest" data-magnetic>Start reading <span aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="/about/" data-magnetic>About Pebbles</a>
         </div>
       </div>
-      <div class="hero__card" data-reveal data-reveal-delay="120">
-        <img src="/assets/uploads/site-icon.jpg" alt="Illustration used as the journal's icon" width="640" height="800" fetchpriority="high">
+      <div class="hero__card" data-parallax="0.06" data-reveal="scale">
+        <div class="hero__card-img"><img src="/assets/uploads/site-icon.jpg" alt="Illustration used as the journal's icon" width="640" height="800" fetchpriority="high"></div>
         <p class="hero__quote">“I write because I want to share my ideas to people.”</p>
       </div>
     </div>
     <div class="wrap">
-      <div class="stats" data-reveal>
-        <div><div class="stat__num">${posts.length}</div><div class="stat__label">Pieces written</div></div>
-        <div><div class="stat__num">${Object.keys(site.categories).length}</div><div class="stat__label">Collections</div></div>
-        <div><div class="stat__num">${years[years.length - 1]}–${years[0]}</div><div class="stat__label">Years of writing</div></div>
-        <div><div class="stat__num">${esc(site.subscribers)}</div><div class="stat__label">Subscribers</div></div>
+      <div class="stats" data-reveal="up">
+        <div><div class="stat__num" data-count="${posts.length}">0</div><div class="stat__label">Pieces written</div></div>
+        <div><div class="stat__num" data-count="${Object.keys(site.categories).length}">0</div><div class="stat__label">Collections</div></div>
+        <div><div class="stat__num" data-text="${years[years.length - 1]}–${years[0]}">${years[years.length - 1]}–${years[0]}</div><div class="stat__label">Years of writing</div></div>
+        <div><div class="stat__num" data-count="${Number(site.subscribers) || 0}" data-count-suffix="">${esc(site.subscribers)}</div><div class="stat__label">Subscribers</div></div>
       </div>
     </div>
   </section>
 
-  <section id="latest" style="padding-top:0">
+  <div class="ticker" aria-hidden="true"><div class="ticker__track">${ticker}${ticker}</div></div>
+
+  <section id="latest">
     <div class="wrap">
-      <div class="section-head" data-reveal>
+      <div class="section-head" data-reveal="up">
         <div>
           <p class="eyebrow">Latest</p>
           <h2>Fresh off the notebook</h2>
         </div>
         <p>The newest piece to arrive — start here, then wander through the rest.</p>
       </div>
-      <article class="featured" data-reveal>
+      <article class="featured" data-reveal="scale">
         ${featuredMedia}
         <div class="featured__body">
           <span class="tag">${esc(featured.category)}</span>
@@ -262,26 +330,43 @@ function homePage() {
             <span class="meta__dot"></span>
             <span class="reading">${readingTime(featured.body)} min read</span>
           </div>
-          <div class="hero__actions"><a class="btn btn--primary" href="${slugUrl(featured)}">Read the piece <span aria-hidden="true">→</span></a></div>
+          <div class="hero__actions"><a class="btn btn--primary" href="${slugUrl(featured)}" data-magnetic>Read the piece <span aria-hidden="true">→</span></a></div>
         </div>
       </article>
     </div>
   </section>
 
-  <section style="padding-top:0">
+  ${poem ? `
+  <section class="poemsection">
     <div class="wrap">
-      <div class="section-head" data-reveal>
+      <div class="section-head section-head--center" data-reveal="up">
+        <div>
+          <p class="eyebrow eyebrow--accent">Slow reading</p>
+          <h2>${esc(poem.title)}</h2>
+          <p class="poemsection__sub">Scroll gently — the poem arrives a line at a time.</p>
+        </div>
+      </div>
+      ${poemLines}
+      <div class="poemsection__foot" data-reveal="up">
+        <a class="btn btn--ghost" href="${slugUrl(poem)}" data-magnetic>Read “${esc(poem.title)}” in full <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>` : ""}
+
+  <section>
+    <div class="wrap">
+      <div class="section-head" data-reveal="up">
         <div>
           <p class="eyebrow">The Journal</p>
           <h2>Every piece, all in one place</h2>
         </div>
         <p><span id="result-count">${posts.length}</span> pieces shown. Filter by collection, or press <kbd>/</kbd> to search.</p>
       </div>
-      <div class="toolbar" data-reveal>
+      <div class="toolbar" data-reveal="up">
         <div class="chips" role="group" aria-label="Filter by collection">${chips}</div>
         <label class="search">
           ${ICONS.search}
-          <span class="skip">Search the journal</span>
+          <span class="vh">Search the journal</span>
           <input id="search-input" type="search" placeholder="Search the journal…" autocomplete="off">
         </label>
       </div>
@@ -292,9 +377,9 @@ function homePage() {
     </div>
   </section>
 
-  <section style="padding-top:0">
+  <section>
     <div class="wrap">
-      <div class="section-head" data-reveal>
+      <div class="section-head" data-reveal="up">
         <div>
           <p class="eyebrow">Archive</p>
           <h2>Browse by year</h2>
@@ -305,9 +390,9 @@ function homePage() {
     </div>
   </section>
 
-  <section style="padding-top:0">
+  <section>
     <div class="wrap">
-      <div class="subscribe" data-reveal>
+      <div class="subscribe" data-reveal="scale">
         <div>
           <h2>Join ${esc(site.subscribers)} other subscribers</h2>
           <p>Get each new poem, story and reflection delivered to your inbox.</p>
@@ -315,7 +400,7 @@ function homePage() {
         <div>
           <form class="subscribe__form" action="mailto:${esc(site.author.email)}" method="post" enctype="text/plain">
             <input type="email" name="email" placeholder="you@example.com" aria-label="Your email address" required>
-            <button class="btn btn--primary" type="submit">Subscribe</button>
+            <button class="btn btn--primary" type="submit" data-magnetic>Subscribe</button>
           </form>
           <p class="subscribe__note">No spam, ever. Unsubscribe any time.</p>
         </div>
@@ -331,14 +416,20 @@ function postPage(p) {
   const newer = posts[idx - 1];
   const older = posts[idx + 1];
 
+  let bodyHtml = transformBody(p);
+  if (p.verse) {
+    let i = 0;
+    bodyHtml = bodyHtml.replace(/<p>/g, () => `<p data-vline style="--i:${i++}">`);
+  }
+
   const figure = p.image
-    ? `<figure class="article-figure"><img src="${p.image}" alt="${esc(p.title)}" loading="eager" decoding="async" width="900" height="600">${p.imageCaption ? `<figcaption>${esc(p.imageCaption)}</figcaption>` : ""}</figure>`
+    ? `<figure class="article-figure" data-reveal="scale"><img src="${p.image}" alt="${esc(p.title)}" loading="eager" decoding="async" width="900" height="600" style="view-transition-name:vt-img-${p.slug}">${p.imageCaption ? `<figcaption>${esc(p.imageCaption)}</figcaption>` : ""}</figure>`
     : "";
 
   const nav = `
     <div class="postnav">
-      ${newer ? `<a class="prev" href="${slugUrl(newer)}"><div class="dir">← Newer</div><div class="t">${esc(newer.title)}</div></a>` : "<span></span>"}
-      ${older ? `<a class="next" href="${slugUrl(older)}"><div class="dir">Older →</div><div class="t">${esc(older.title)}</div></a>` : "<span></span>"}
+      ${newer ? `<a class="prev" href="${slugUrl(newer)}" data-magnetic><div class="dir">← Newer</div><div class="t">${esc(newer.title)}</div></a>` : "<span></span>"}
+      ${older ? `<a class="next" href="${slugUrl(older)}" data-magnetic><div class="dir">Older →</div><div class="t">${esc(older.title)}</div></a>` : "<span></span>"}
     </div>`;
 
   const related = posts
@@ -349,9 +440,10 @@ function postPage(p) {
   <article>
     <header class="article-head">
       <div class="narrow">
-        <a class="tag" href="/category/${CAT_SLUG(p.category)}/">${esc(p.category)}</a>
-        <h1 class="article-title">${esc(p.title)}</h1>
-        <div class="article-meta meta">
+        <div class="progress-dot" aria-hidden="true"></div>
+        <a class="tag" href="/category/${CAT_SLUG(p.category)}/" data-reveal="fade">${esc(p.category)}</a>
+        <h1 class="article-title" style="view-transition-name:vt-title-${p.slug}" data-reveal="mask">${esc(p.title)}</h1>
+        <div class="article-meta meta" data-reveal="up" data-reveal-delay="150">
           <time datetime="${p.date}">${fmtDate(p.date)}</time>
           <span class="meta__dot"></span>
           <span class="reading">${readingTime(p.body)} min read</span>
@@ -359,22 +451,22 @@ function postPage(p) {
         </div>
       </div>
     </header>
-    <div class="narrow article-body${p.verse ? " is-verse" : ""}" data-reveal>
+    <div class="narrow article-body${p.verse ? " is-verse" : ""}"${p.verse ? " data-verse" : ' data-reveal="up"'}>
       ${figure}
-      ${p.body}
+      ${bodyHtml}
       ${p.note ? `<p class="note">${esc(p.note)}</p>` : ""}
     </div>
     <div class="narrow endmark">
-      <div class="endmark__glyph" aria-hidden="true">❦</div>
+      <div class="endmark__glyph" aria-hidden="true" data-spin>❦</div>
       <p class="meta">Written by ${esc(site.author.name)} · ${fmtDate(p.date)}</p>
     </div>
-    <div class="narrow" style="padding-bottom:3rem">${nav}</div>
+    <div class="narrow" style="padding-bottom:3rem" data-reveal="up">${nav}</div>
   </article>
 
   ${related.length ? `
-  <section style="padding-top:0">
+  <section class="related">
     <div class="wrap">
-      <div class="section-head"><div><p class="eyebrow">Keep reading</p><h2>More ${esc(p.category.toLowerCase())}</h2></div></div>
+      <div class="section-head" data-reveal="up"><div><p class="eyebrow">Keep reading</p><h2>More ${esc(p.category.toLowerCase())}</h2></div></div>
       <div class="grid">${related.map((r, i) => card(r, i * 70)).join("")}</div>
     </div>
   </section>` : ""}`;
@@ -405,14 +497,14 @@ function categoryPage(name) {
   const body = `
   <section class="page-head">
     <div class="wrap">
-      <p class="eyebrow eyebrow--accent" data-reveal>Collection</p>
-      <h1 data-reveal>${esc(metaCat.symbol || "❦")} ${esc(name)}</h1>
-      <p class="lede" style="margin-top:1rem;max-width:52ch" data-reveal>${esc(metaCat.blurb || "")}</p>
-      <p class="meta" style="margin-top:1rem">${catPosts.length} ${catPosts.length === 1 ? "piece" : "pieces"}</p>
-      <div class="chips" style="margin-top:1.6rem" data-reveal>${chips}</div>
+      <p class="eyebrow eyebrow--accent" data-reveal="fade">Collection</p>
+      <h1 data-reveal="mask">${esc(metaCat.symbol || "❦")} ${esc(name)}</h1>
+      <p class="lede" style="margin-top:1rem;max-width:52ch" data-reveal="up" data-reveal-delay="120">${esc(metaCat.blurb || "")}</p>
+      <p class="meta" style="margin-top:1rem" data-reveal="up" data-reveal-delay="160">${catPosts.length} ${catPosts.length === 1 ? "piece" : "pieces"}</p>
+      <div class="chips" style="margin-top:1.6rem" data-reveal="up" data-reveal-delay="200">${chips}</div>
     </div>
   </section>
-  <section style="padding-top:0">
+  <section class="pt0">
     <div class="wrap">
       <div class="grid">${catPosts.map((p, i) => card(p, (i % 3) * 60)).join("")}</div>
     </div>
@@ -431,16 +523,16 @@ function aboutPage() {
   const body = `
   <section class="page-head">
     <div class="wrap">
-      <p class="eyebrow eyebrow--accent" data-reveal>Hello there</p>
-      <h1 data-reveal>About Pebbles Martinez</h1>
+      <p class="eyebrow eyebrow--accent" data-reveal="fade">Hello there</p>
+      <h1 data-reveal="mask">About Pebbles Martinez</h1>
     </div>
   </section>
-  <section style="padding-top:0">
+  <section class="pt0">
     <div class="wrap about-grid">
-      <div data-reveal>
-        <div class="portrait"><img src="/assets/uploads/site-icon.jpg" alt="Illustration used as Pebbles' avatar" width="640" height="800"></div>
+      <div data-reveal="scale">
+        <div class="portrait" data-parallax="0.04"><img src="/assets/uploads/site-icon.jpg" alt="Illustration used as Pebbles' avatar" width="640" height="800"></div>
       </div>
-      <div class="prose" data-reveal data-reveal-delay="100">
+      <div class="prose" data-reveal="up" data-reveal-delay="100">
         <p class="lede">Hi, my name is Pebbles Martinez. I am a girl who wants to contribute my best to world.</p>
         <p>My dream is to become an architect and an author of books. I write articles about my adventures as a teenager. I write because I want to share my ideas to people, and simply because I love writing.</p>
         <p>In my blog, you will be able to read random ideas that make me happy. Join my articles and let us be jolly!</p>
@@ -455,7 +547,7 @@ function aboutPage() {
         </div>
         <h2 style="margin-top:2rem">Why “Betaether”?</h2>
         <p>My username was made by my father since I was very little, before I had my Gmail account. The word <em>ether</em> was chosen carefully, and <em>beta</em> — meaning second, or medium — was added before it. According to my father, beta means second, and he used it to mean that I am still growing: I have a lot to learn more before I can be alpha. Maybe it’s a way of telling that inside, I am still a kid, and the world has a lot more to teach before I can go to the next level.</p>
-        <div class="hero__actions"><a class="btn btn--primary" href="/">Read the journal <span aria-hidden="true">→</span></a><a class="btn btn--ghost" href="/contact/">Say hello</a></div>
+        <div class="hero__actions"><a class="btn btn--primary" href="/" data-magnetic>Read the journal <span aria-hidden="true">→</span></a><a class="btn btn--ghost" href="/contact/" data-magnetic>Say hello</a></div>
       </div>
     </div>
   </section>`;
@@ -466,27 +558,27 @@ function contactPage() {
   const body = `
   <section class="page-head">
     <div class="wrap">
-      <p class="eyebrow eyebrow--accent" data-reveal>Say hello</p>
-      <h1 data-reveal>Contact</h1>
-      <p class="lede" style="margin-top:1rem;max-width:48ch" data-reveal>Thoughts on a poem? A kind word? A story of your own? Pebbles would love to hear from you.</p>
+      <p class="eyebrow eyebrow--accent" data-reveal="fade">Say hello</p>
+      <h1 data-reveal="mask">Contact</h1>
+      <p class="lede" style="margin-top:1rem;max-width:48ch" data-reveal="up" data-reveal-delay="120">Thoughts on a poem? A kind word? A story of your own? Pebbles would love to hear from you.</p>
     </div>
   </section>
-  <section style="padding-top:0">
+  <section class="pt0">
     <div class="wrap">
-      <div class="contact-card" data-reveal>
+      <div class="contact-card" data-reveal="scale">
         <div class="contact-card__media"><img src="${site.contactImage}" alt="" loading="lazy" width="800" height="600"></div>
         <div class="contact-card__body">
           <span class="k">Name</span><span class="v">Pebbles Martinez</span>
           <span class="k">E-mail address</span><span class="v"><a href="mailto:${esc(site.author.email)}">${esc(site.author.email)}</a></span>
           <span class="k">Website</span><span class="v"><a href="https://betaether.wordpress.com">betaether.wordpress.com</a></span>
-          <div class="hero__actions"><a class="btn btn--primary" href="mailto:${esc(site.author.email)}">Send an email <span aria-hidden="true">→</span></a></div>
+          <div class="hero__actions"><a class="btn btn--primary" href="mailto:${esc(site.author.email)}" data-magnetic>Send an email <span aria-hidden="true">→</span></a></div>
         </div>
       </div>
     </div>
   </section>
-  <section style="padding-top:0">
+  <section class="pt0">
     <div class="wrap">
-      <div class="subscribe" data-reveal>
+      <div class="subscribe" data-reveal="scale">
         <div>
           <h2>Or follow along quietly</h2>
           <p>Join ${esc(site.subscribers)} other subscribers and get new pieces by email.</p>
@@ -494,14 +586,14 @@ function contactPage() {
         <div>
           <form class="subscribe__form" action="mailto:${esc(site.author.email)}" method="post" enctype="text/plain">
             <input type="email" name="email" placeholder="you@example.com" aria-label="Your email address" required>
-            <button class="btn btn--primary" type="submit">Subscribe</button>
+            <button class="btn btn--primary" type="submit" data-magnetic>Subscribe</button>
           </form>
           <p class="subscribe__note">No spam, ever. Unsubscribe any time.</p>
         </div>
       </div>
     </div>
   </section>`;
-  return shell({ title: "Contact", description: `Get in touch with ${site.author.name}.`, active: "/contact/", body, canonical: "/contact/" });
+  return shell({ title: "Contact", description: `Get in touch with ${site.author.name} — send a note about a poem, a story, or just to say hello.`, active: "/contact/", body, canonical: "/contact/" });
 }
 
 function archivePage() {
@@ -512,32 +604,33 @@ function archivePage() {
         .filter((p) => p.date.startsWith(y))
         .map((p) => `<a class="year__item" href="${slugUrl(p)}"><span class="t">${esc(p.title)}</span><span class="d">${fmtDate(p.date, false)} · ${esc(p.category)}</span></a>`)
         .join("");
-      return `<div class="year" data-reveal><div class="year__num">${y}</div><div class="year__list">${items}</div></div>`;
+      return `<div class="year" data-reveal="up"><div class="year__num">${y}</div><div class="year__list">${items}</div></div>`;
     })
     .join("");
   const body = `
   <section class="page-head">
     <div class="wrap">
-      <p class="eyebrow eyebrow--accent" data-reveal>Everything</p>
-      <h1 data-reveal>The Archive</h1>
-      <p class="lede" style="margin-top:1rem" data-reveal>All ${posts.length} pieces, newest first.</p>
+      <p class="eyebrow eyebrow--accent" data-reveal="fade">Everything</p>
+      <h1 data-reveal="mask">The Archive</h1>
+      <p class="lede" style="margin-top:1rem" data-reveal="up" data-reveal-delay="120">All ${posts.length} pieces, newest first.</p>
     </div>
   </section>
-  <section style="padding-top:0"><div class="wrap"><div class="archive">${list}</div></div></section>`;
-  return shell({ title: "Archive", description: `Every piece published on ${site.title}.`, active: "/archive/", body, canonical: "/archive/" });
+  <section class="pt0"><div class="wrap"><div class="archive">${list}</div></div></section>`;
+  return shell({ title: "Archive", description: `Every piece published on ${site.title} — all ${posts.length} poems, stories, letters, reflections and guides, newest first.`, active: "/archive/", body, canonical: "/archive/" });
 }
 
 function notFoundPage() {
   const body = `
-  <section class="hero" style="text-align:center">
-    <div class="narrow" style="display:grid;justify-items:center;gap:1rem">
-      <p class="eyebrow eyebrow--accent">404</p>
-      <h1 style="font-weight:300">This page wandered off</h1>
-      <p class="lede">Like a poem half-written, it isn’t here. But the journal is.</p>
-      <div class="hero__actions"><a class="btn btn--primary" href="/">Back to the journal <span aria-hidden="true">→</span></a></div>
+  <section class="hero hero--center">
+    <div class="hero__aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="narrow" style="display:grid;justify-items:center;gap:1rem;text-align:center">
+      <p class="eyebrow eyebrow--accent" data-reveal="fade">404</p>
+      <h1 style="font-weight:300" data-reveal="mask">This page wandered off</h1>
+      <p class="lede" data-reveal="up" data-reveal-delay="120">Like a poem half-written, it isn’t here. But the journal is.</p>
+      <div class="hero__actions" data-reveal="up" data-reveal-delay="200"><a class="btn btn--primary" href="/" data-magnetic>Back to the journal <span aria-hidden="true">→</span></a></div>
     </div>
   </section>`;
-  return shell({ title: "Page not found", description: "Page not found.", active: "/404", body, canonical: "/404/" });
+  return shell({ title: "Page not found", description: "That page isn’t here — but the poetry, stories and reflections of Pebbles Martinez are. Head back to the journal.", active: "/404", body, canonical: "/404/" });
 }
 
 /* ------------------------------------------------------------------ feeds */
